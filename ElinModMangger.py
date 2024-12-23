@@ -166,6 +166,31 @@ def read_alias_from_file():
                     alias_dict[parts[0]] = parts[1]
     return alias_dict
 
+class AddModListItem(QWidget):
+    def __init__(self, mod, *args, **kwargs):
+        super(AddModListItem, self).__init__(*args, **kwargs)
+        layout = QHBoxLayout()
+        self.title_label = QLabel(f"{mod.title} {mod.version}")
+        self.alias_label = QLabel(f"({mod.alias or ''})")
+        self.image_label = QLabel()  
+        
+        preview_path = os.path.join(mod.path, 'preview.jpg')
+        if os.path.exists(preview_path):
+            pixmap = QPixmap(preview_path).scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)  
+            self.image_label.setPixmap(pixmap)
+        
+        font = self.title_label.font()
+        font.setPointSize(font.pointSize())  
+        self.title_label.setFont(font)
+        self.alias_label.setFont(font)
+
+        layout.addWidget(self.image_label) 
+        layout.addWidget(self.title_label)
+        layout.addWidget(self.alias_label)
+        layout.setAlignment(Qt.AlignLeft)
+        self.setLayout(layout)
+        self.mod = mod
+
 class ModListItem(QWidget):
     def __init__(self, mod, index, *args, **kwargs):
         super(ModListItem, self).__init__(*args, **kwargs)
@@ -174,17 +199,13 @@ class ModListItem(QWidget):
         self.index_label = QLabel(str(index + 1))
         self.title_label = QLabel(f"{mod.title} {mod.version}")
         self.alias_label = QLabel(f"({mod.alias or ''})")
-        self.image_label = QLabel()  # 新增：用于显示预览图
-
-        # 加载并放大预览图
+        self.image_label = QLabel()  
         preview_path = os.path.join(mod.path, 'preview.jpg')
         if os.path.exists(preview_path):
-            pixmap = QPixmap(preview_path).scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)  # 放大图片
+            pixmap = QPixmap(preview_path).scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation) 
             self.image_label.setPixmap(pixmap)
-
-        # 设置较大的字体
         font = self.title_label.font()
-        font.setPointSize(font.pointSize())  # 放大字体
+        font.setPointSize(font.pointSize())
         self.title_label.setFont(font)
         self.alias_label.setFont(font)
         self.index_label.setFont(font)
@@ -342,6 +363,7 @@ class MainWindow(QMainWindow):
         self.mod_list = QListWidget()
         self.mod_list.setDragDropMode(QAbstractItemView.InternalMove)
         self.mod_list.itemSelectionChanged.connect(self.on_mod_item_clicked)
+        self.mod_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.mod_list.model().rowsMoved.connect(self.update_index_labels)  # Update indexes after drag and drop
         scroll_area.setWidget(self.mod_list)
         self.right_side_widget = self.create_right_side_widget()
@@ -377,67 +399,81 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "警告", "请至少选择一个MOD进行删除。")
             return
         
+        confirm = QMessageBox.question(self, "确认删除", "您确定要删除所选的MOD吗？",
+                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if confirm != QMessageBox.Yes:
+            return
+        mods_to_remove = []
         for item in selected_items:
             widget = self.mod_list.itemWidget(item)
             if widget is None:
                 continue  
             mod = widget.mod
-            self.mods.remove(mod)  # 从mods列表中移除mod
-            
-            # 移除mod的widget
+            mods_to_remove.append(mod)
             row = self.mod_list.row(item)
             self.mod_list.takeItem(row)
-
-        self.save_current_sort()  # 保存更改到当前排序文件
-        self.update_mod_list()  # 更新MOD列表以反映最新的排序文件内容
+        for mod in mods_to_remove:
+            self.mods.remove(mod)  
+        self.save_current_sort()  
+        self.update_mod_list()  
     
     def show_add_mod_dialog(self):
         existing_mod_titles = {mod.title for mod in self.mods}
         available_mods = [mod for mod in get_mods_from_directory(self.mod_folder_path) 
-                          if mod.title not in existing_mod_titles]
-
+                        if mod.title not in existing_mod_titles]
         if not available_mods:
             QMessageBox.information(self, "信息", "没有可以添加的新MOD。")
             return
-
+        
         dialog = QDialog(self)
         dialog.setWindowTitle("添加MOD")
+        dialog.setMinimumSize(800, 600)  
+        
         layout = QVBoxLayout()
+        
         list_widget = QListWidget()
+        list_widget.setSelectionMode(QAbstractItemView.ExtendedSelection) 
         for mod in available_mods:
-            item = QListWidgetItem(mod.title)
-            item.setData(Qt.UserRole, mod)
-            list_widget.addItem(item)
-
+            item = QListWidgetItem(list_widget)
+            widget = AddModListItem(mod)  
+            item.setSizeHint(widget.sizeHint())
+            list_widget.setItemWidget(item, widget)
+        
         add_button = QPushButton("添加选中的MOD")
         cancel_button = QPushButton("取消")
-
         button_layout = QHBoxLayout()
         button_layout.addWidget(add_button)
         button_layout.addWidget(cancel_button)
-
         layout.addWidget(list_widget)
         layout.addLayout(button_layout)
         dialog.setLayout(layout)
-
+        
         add_button.clicked.connect(lambda: self.add_selected_mods(dialog, list_widget))
         cancel_button.clicked.connect(dialog.reject)
-
         dialog.exec_()
+
 
     def add_selected_mods(self, dialog, list_widget):
         selected_items = list_widget.selectedItems()
         if not selected_items:
             QMessageBox.warning(self, "警告", "请至少选择一个MOD进行添加。")
             return
-
-        for item in selected_items:
-            mod = item.data(Qt.UserRole)
-            self.mods.append(mod)
-            mod.enabled = True
-            self.update_mod_list()
         
-        self.save_current_sort()  # 保存更改到当前排序文件
+        new_mods = []
+        for item in selected_items:
+            widget = list_widget.itemWidget(item)
+            if widget is None:
+                continue  
+            mod = widget.mod
+            new_mods.append(mod)
+            mod.enabled = True  # 默认启用新添加的MOD
+
+        if new_mods:
+            self.mods.extend(new_mods)
+            self.update_mod_list()
+            self.save_current_sort()  # 保存更改到当前排序文件
+            QMessageBox.information(self, "添加成功", f"已成功添加 {len(new_mods)} 个MOD！")
+
         dialog.accept()
 
     def fill_sort_files_combo(self):
