@@ -561,11 +561,39 @@ class MainWindow(QMainWindow):
                     file.write(f"{mod.path},{enabled}\n")
             QMessageBox.information(self, "保存成功", "排序文件已成功保存！")
 
+    def sync_mods_with_files(self):
+        all_existing_mod_paths = set()
+        for root, dirs, files in os.walk(self.mod_folder_path):
+            if 'package.xml' in files:
+                mod_path = root
+                all_existing_mod_paths.add(mod_path)
+
+        sort_files = [f for f in os.listdir(SORT_FOLDER_PATH) if f.startswith('[sort]')]
+        for sort_file in sort_files:
+            file_path = os.path.join(SORT_FOLDER_PATH, sort_file)
+            mods = read_mods_from_file(file_path)
+            updated_mods = [mod for mod in mods if mod.path in all_existing_mod_paths]
+            if len(updated_mods) != len(mods):
+                with open(file_path, 'w', encoding='utf-8') as file:
+                    for mod in updated_mods:
+                        enabled = '1' if mod.enabled else '0'
+                        file.write(f"{mod.path},{enabled}\n")
+        all_known_mods = get_mods_from_directory(self.mod_folder_path)
+        self.mods = [mod for mod in all_known_mods if mod.path in all_existing_mod_paths]
+
+
     def apply_current_sort(self):
+        sorted_mod_paths = {mod.path: mod.enabled for mod in self.mods}
+
         with open(LOADORDER_PATH, 'w', encoding='utf-8') as file:
             for mod in self.mods:
-                enabled = '1' if mod.enabled else '0'
+                enabled = '1' if sorted_mod_paths.get(mod.path, False) else '0'
                 file.write(f"{mod.path},{enabled}\n")
+            all_installed_mods = get_mods_from_directory(self.mod_folder_path)
+            for mod in all_installed_mods:
+                if mod.path not in sorted_mod_paths:
+                    file.write(f"{mod.path},0\n")
+
         QMessageBox.information(self, "应用成功", "已将当前排序应用于游戏！")
 
     def create_new_sort_file(self):
