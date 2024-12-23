@@ -1,9 +1,12 @@
 import sys
 import os
-from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QLineEdit, QLabel, QTextEdit, QFileDialog, QMessageBox, QComboBox, QCheckBox, QSplitter, QListWidget, QListWidgetItem, QAbstractItemView, QScrollArea,QDialog
-from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QLineEdit, QLabel, QTextEdit, QFileDialog, QMessageBox, QComboBox, QCheckBox, QSplitter, QListWidget, QListWidgetItem, QAbstractItemView, QScrollArea,QDialog,QListView,QAbstractSlider
+from PyQt5.QtCore import Qt,QEvent
+from PyQt5.QtGui import QPixmap
 import xml.etree.ElementTree as ET
 import win32com.client
+import winreg
+import vdf
 
 def find_steam_lnk_path():
     desktop_path = os.path.join(os.path.expanduser("~"), "Desktop", "Steam.lnk")
@@ -33,7 +36,45 @@ steam_lnk_path = find_steam_lnk_path()
 steam_path = get_steam_install_path_from_lnk(steam_lnk_path)
 steam_path = steam_path.replace("steam.exe",'')
 
-ELIN_PATH = os.path.join(os.path.dirname(steam_path), 'steamapps', 'common' ,'Elin')
+def get_steam_game_install_path(app_id):
+    try:
+        library_folders_file = os.path.join(steam_path, 'steamapps', 'libraryfolders.vdf')
+        if not os.path.exists(library_folders_file):
+            print("Could not find libraryfolders.vdf")
+            return None
+        else:
+            with open(library_folders_file, 'r', encoding='utf-8') as f:
+                library_data = vdf.load(f)
+            if isinstance(library_data, dict) and 'libraryfolders' in library_data:
+                library_folders = library_data['libraryfolders']
+            else:
+                print("The structure of libraryfolders.vdf is unexpected.")
+                return None
+            game_install_path = None
+            for folder_id, folder_info in library_folders.items():
+                if folder_id.isdigit():
+                    folder_path = folder_info.get('path')
+                    if folder_path and os.path.exists(folder_path):
+                        acf_file_path = os.path.join(folder_path, 'steamapps', f'appmanifest_{app_id}.acf')
+                        if os.path.exists(acf_file_path):
+                            with open(acf_file_path, 'r', encoding='utf-8') as f:
+                                acf_data = vdf.load(f)
+                            if 'AppState' in acf_data and 'installdir' in acf_data['AppState']:
+                                game_install_path = os.path.join(folder_path, 'steamapps', 'common', acf_data['AppState']['installdir'])
+                                break
+        if game_install_path:
+            return game_install_path
+        else:
+            registry_key_path = fr"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App {app_id}"
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, registry_key_path)
+            install_path, _ = winreg.QueryValueEx(key, "InstallLocation")
+            winreg.CloseKey(key)
+            return install_path.rstrip()
+    except WindowsError as e:
+        print(f"An error occurred: {e}")
+        return None
+
+ELIN_PATH = get_steam_game_install_path("2135150")
 
 def setup_elin_environment(app):
     if not ELIN_PATH:
@@ -48,7 +89,7 @@ def setup_elin_environment(app):
 LOADORDER_PATH = os.path.join(ELIN_PATH, 'loadorder.txt')
 LOADORDER_NAME_PATH = os.path.join(ELIN_PATH, 'loadorname.txt')
 SORT_FOLDER_PATH = os.path.join(ELIN_PATH, 'Sort')
-MODS_PATH = os.path.join(os.path.dirname(steam_path), 'steamapps', 'workshop' ,'content','2135150')
+MODS_PATH = os.path.join(os.path.dirname(os.path.normpath(ELIN_PATH).replace(os.path.join('Elin'), '').replace(os.path.join('common'), '')), 'workshop' ,'content','2135150')
 
 if not os.path.exists(SORT_FOLDER_PATH):
     os.makedirs(SORT_FOLDER_PATH)
@@ -71,11 +112,20 @@ class ModInfo:
         self.description = description
         self.alias = alias  
 
+def replace_text_if_different(target_text, source_base_text):
+    file_name = target_text.split('\\')[-1]
+    source_full_text = os.path.join(source_base_text, file_name)
+    if target_text != source_full_text:
+        replaced_text = source_full_text
+        return replaced_text
+    else:
+        return target_text
+
 def read_mods_from_file(file_path):
     mods = []
     if not os.path.exists(file_path):
-        return mods  # 如果排序文件不存在，则返回空列表
-
+        return mods
+    
     with open(file_path, 'r', encoding='utf-8') as file:
         for line in file:
             parts = line.strip().split(',')
@@ -83,6 +133,7 @@ def read_mods_from_file(file_path):
                 continue  # 忽略格式错误的行
 
             mod_path, enabled_str = parts
+            mod_path = replace_text_if_different(mod_path,MODS_PATH)
             if os.path.exists(mod_path) and os.path.isfile(os.path.join(mod_path, 'package.xml')):
                 try:
                     mod_info = get_mod_info(mod_path)
@@ -123,10 +174,26 @@ class ModListItem(QWidget):
         self.index_label = QLabel(str(index + 1))
         self.title_label = QLabel(f"{mod.title} {mod.version}")
         self.alias_label = QLabel(f"({mod.alias or ''})")
+        self.image_label = QLabel()  # 新增：用于显示预览图
+
+        # 加载并放大预览图
+        preview_path = os.path.join(mod.path, 'preview.jpg')
+        if os.path.exists(preview_path):
+            pixmap = QPixmap(preview_path).scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)  # 放大图片
+            self.image_label.setPixmap(pixmap)
+
+        # 设置较大的字体
+        font = self.title_label.font()
+        font.setPointSize(font.pointSize())  # 放大字体
+        self.title_label.setFont(font)
+        self.alias_label.setFont(font)
+        self.index_label.setFont(font)
+
         self.checkbox.setChecked(mod.enabled)
         self.checkbox.stateChanged.connect(lambda state: setattr(mod, 'enabled', bool(state)))
         layout.addWidget(self.checkbox)
         layout.addWidget(self.index_label)
+        layout.addWidget(self.image_label)  # 将预览图放在序号后
         layout.addWidget(self.title_label)
         layout.addWidget(self.alias_label)
         layout.setAlignment(Qt.AlignLeft)
@@ -146,7 +213,7 @@ class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__(*args, **kwargs)
         self.setWindowTitle("Elin Mod Manager")
-        self.setGeometry(100, 100, 800, 600)
+        # self.setGeometry(100, 100, 1000, 800)
         self.current_sort_file = DEFAULT_SORT_FILE
         self.mod_folder_path = MODS_PATH 
         self.initUI()
@@ -164,7 +231,64 @@ class MainWindow(QMainWindow):
         container = QWidget()
         container.setLayout(main_layout)
         self.setCentralWidget(container)
+        self.setGeometry(100, 100, 1200, 900)
+        self.setMinimumSize(800, 600)
+        self.mod_list.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.mod_list.viewport().installEventFilter(self)
         self.load_mods_from_file(self.current_sort_file)
+
+    def eventFilter(self, source, event):
+        if event.type() == QEvent.MouseMove and isinstance(source, QListView):
+            pos = event.pos()
+            scrollbar = self.mod_list.verticalScrollBar()
+            if pos.y() <= 20:  # 列表顶部边缘
+                scrollbar.triggerAction(QAbstractSlider.SliderSingleStepSub)
+            elif pos.y() >= self.mod_list.viewport().height() - 20:  # 列表底部边缘
+                scrollbar.triggerAction(QAbstractSlider.SliderSingleStepAdd)
+        return super(MainWindow, self).eventFilter(source, event)
+
+    def create_right_side_widget(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+        self.preview_label = QLabel()  # 预览区
+        self.preview_label.setAlignment(Qt.AlignCenter)
+        self.preview_label.setFixedHeight(350)
+        self.preview_label.setFixedWidth(350)
+        self.tags_line_edit = QLineEdit()
+        self.description_text_edit = QTextEdit()
+
+        layout.addWidget(QLabel("Preview"))
+        layout.addWidget(self.preview_label)
+        layout.addWidget(QLabel("Tags"))
+        layout.addWidget(self.tags_line_edit)
+        layout.addWidget(QLabel("Description"))
+        layout.addWidget(self.description_text_edit)
+        
+        widget.setLayout(layout)
+        return widget
+    
+    def on_mod_item_clicked(self):
+        selected_items = self.mod_list.selectedItems()
+        if selected_items:
+            item = selected_items[0]
+            widget = self.mod_list.itemWidget(item)
+            if widget is None:
+                return  
+            mod = widget.mod
+            self.tags_line_edit.setText(mod.tags or '')  # 更新为 QLineEdit
+            self.description_text_edit.setText(mod.description or '')
+            preview_path = os.path.join(mod.path, 'preview.jpg')
+            if os.path.exists(preview_path):
+                pixmap = QPixmap(preview_path)
+                if pixmap.height() < self.preview_label.height():
+                    pixmap = pixmap.scaledToWidth(200, Qt.SmoothTransformation)
+                    self.preview_label.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
+                else:
+                    pixmap = pixmap.scaled(self.preview_label.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+                    self.preview_label.setAlignment(Qt.AlignCenter)
+                self.preview_label.setPixmap(pixmap)
+            else:
+                self.preview_label.clear()
 
     def sync_mods_with_files(self):
         existing_mod_paths = set()
@@ -224,18 +348,6 @@ class MainWindow(QMainWindow):
         splitter.addWidget(scroll_area)
         splitter.addWidget(self.right_side_widget)
         return splitter
-
-    def create_right_side_widget(self):
-        widget = QWidget()
-        layout = QVBoxLayout()
-        self.tags_text_edit = QTextEdit()
-        self.description_text_edit = QTextEdit()
-        layout.addWidget(QLabel("Tags"))
-        layout.addWidget(self.tags_text_edit)
-        layout.addWidget(QLabel("Description"))
-        layout.addWidget(self.description_text_edit)
-        widget.setLayout(layout)
-        return widget
 
     def create_bottom_controls(self):
         widget = QWidget()
@@ -385,17 +497,6 @@ class MainWindow(QMainWindow):
             widget = self.mod_list.itemWidget(item)
             if widget is not None:  
                 widget.index_label.setText(str(idx + 1))
-
-    def on_mod_item_clicked(self):
-        selected_items = self.mod_list.selectedItems()
-        if selected_items:
-            item = selected_items[0]
-            widget = self.mod_list.itemWidget(item)
-            if widget is None:
-                return  
-            mod = widget.mod
-            self.tags_text_edit.setText(mod.tags or '')
-            self.description_text_edit.setText(mod.description or '')
 
     def set_alias_for_selected_mod(self):
         selected_items = self.mod_list.selectedItems()
