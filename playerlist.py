@@ -250,7 +250,6 @@ class ModListItem(QFrame):
             menu.addAction(Action(FIF.PENCIL_INK, '设置别名', triggered=self.set_alias))
             menu.addSeparator()
         menu.addAction(Action(FIF.DELETE, '从列表中移除', triggered=self.remove_selected_mods(selected_items)))
-
         menu.exec(event.globalPos(), aniType=MenuAnimationType.DROP_DOWN)
 
     def open_folder(self):
@@ -455,9 +454,8 @@ class AddModListItem(QFrame):
                 menu.addSeparator()
             menu.addAction(Action(FIF.PENCIL_INK, '设置别名',triggered=self.set_alias))
             menu.addSeparator()
-            menu.addAction(Action(FIF.FOLDER_ADD, '添加',triggered=self.add_mod(selected_items)))
-            menu.addSeparator()
-            menu.exec(event.globalPos(), aniType=MenuAnimationType.DROP_DOWN)
+        menu.addAction(Action(FIF.FOLDER_ADD, '添加',triggered=self.add_mod(selected_items)))
+        menu.exec(event.globalPos(), aniType=MenuAnimationType.DROP_DOWN)
 
     def open_folder(self):
         if not os.path.exists(self.item.path):
