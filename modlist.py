@@ -324,7 +324,7 @@ class ModList(QFrame):
         for idx, stand in enumerate(stands):
             item = QListWidgetItem(self.listWidget)
             item.setSizeHint(QSize(0, 80))
-            mod_item = ModListItem(stand, idx, icon_path="resource/icon.png", description="这里放上对应的描述文本",mod_list=self.listWidget)
+            mod_item = ModListItem(stand, idx,mod_list=self.listWidget)
             mod_item.setParent(self)  # 确保 ModListItem 的父级是 ModList 而不是 listWidget
             mod_item.clicked.connect(self.on_item_clicked)  # 连接 ModListItem 的点击信号到槽
             self.listWidget.setItemWidget(item, mod_item)
