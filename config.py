@@ -140,11 +140,15 @@ class Launcher_config:
                     if re.match(r'^\d{8,}$',steam_id ):
                         mod_info.steam_id = mod_list[mod]["steam_id"]
                     mod_info.enabled = mod_list[mod]["enable"]
+                    alias_dict = read_alias_from_file()
+                    mod_info.alias = alias_dict.get(mod_info.title, "") 
                     mods.append(mod_info)
                 except Exception as e:
                     print(f"警告：无法读取MOD信息 {mod_path} 错误: {e}")
             else:
                 mod_info = ModItemInfo(mod_path, False, mod_list[mod]["title"],mod_list[mod]["version"],'','',mod,mod_list[mod]["steam_id"], '')
+                alias_dict = read_alias_from_file()
+                mod_info.alias = alias_dict.get(mod_info.title, "") 
                 mods.append(mod_info)
         return mods
     
