@@ -212,7 +212,7 @@ class Aboutinfo(CardWidget):
         self.setStyleSheet("background-color: white; border-radius: 10px;")
         self.text_browser = TextBrowser(self)
         self.text_browser.setFixedSize(400, 300)
-        self.text_browser.setMarkdown("### 关于\n这是一个使用pyqt6和PyQt-Fluent开发的Elin的第三方启动器，目的是为了方便Elin玩家对mod的排序。\n\r注：启动器完全免费。\n## [启动器的GitHub地址](https://github.com/)\n## [使用教程请点这里](https://github.com/)\n## [PyQt-Fluent的项目地址](https://github.com/zhiyiYo/PyQt-Fluent-Widgets)")  # 改进 Markdown 格式
+        self.text_browser.setMarkdown("### 关于\n这是一个使用pyqt6和PyQt-Fluent开发的Elin的第三方启动器，目的是为了方便Elin玩家对mod的排序。\n\r注：启动器完全免费。\n## [启动器的GitHub地址](https://github.com/SovhVgso/ElinModMangger/)\n## [使用教程请点这里](https://github.com/)\n## [PyQt-Fluent的项目地址](https://github.com/zhiyiYo/PyQt-Fluent-Widgets)")  # 改进 Markdown 格式
         self.text_browser.setOpenExternalLinks(True)
         self.close_button = QPushButton("╳", self)
         self.close_button.clicked.connect(self.close)
