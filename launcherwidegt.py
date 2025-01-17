@@ -144,7 +144,7 @@ class Homeui(QFrame):
     def on_current_text_changed(self, text):
         """当用户选择了不同的项时调用"""
         if text:
-            self.update_palyer(text)
+            self.update_palyer()
         else:
             self.comboBox.setPlaceholderText("请选择播放集")
 
