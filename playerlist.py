@@ -799,10 +799,11 @@ class PlayerList(QFrame):
                         if os.path.isfile(package_xml_path):
                             tree = ET.parse(package_xml_path)
                             root = tree.getroot()
+                            game_id = root.find('id').text
                             title = root.find('title').text if root.find('title') is not None else ''
                             version = root.find('version').text if root.find('version') is not None else ''
                             
-                            json_data[steam_id] = {
+                            json_data[game_id] = {
                                 "title": title,
                                 "version": version,
                                 "steam_id": steam_id,
@@ -1024,6 +1025,7 @@ class PlayerList(QFrame):
             mod_item.check_update.connect(self.save_current_sort)
             self.listWidget.setItemWidget(item, mod_item)
         self.config.update_config("late_player",self.comboBox.currentText())
+        self.save_current_sort()
         return True
 
     def on_search_text_changed(self, text):
